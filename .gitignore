@@ -1,0 +1,10 @@
+# data
+data/
+
+# model
+*.pth
+*.pt
+
+# logs
+runs/
+tensorboard/
