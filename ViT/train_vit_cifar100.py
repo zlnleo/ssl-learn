@@ -8,6 +8,9 @@ from torchvision import datasets, transforms
 from tqdm import tqdm
 from torchvision.transforms import RandAugment
 from vit_cifar100 import ViT   # 你之前写的模型文件
+from vit_cifar100 import WarmupCosineLR
+from vit_cifar100 import EMA
+
 
 # -----------------------------
 # 1. 配置
@@ -63,7 +66,12 @@ test_loader = DataLoader(test_dataset, batch_size=BATCH_SIZE,
 model = ViT(num_classes=100).to(device)
 criterion = nn.CrossEntropyLoss(label_smoothing=0.1)
 optimizer = optim.AdamW(model.parameters(), lr=LR, weight_decay=0.05)
-scheduler = optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=EPOCHS)
+scheduler = WarmupCosineLR(
+    optimizer,
+    warmup_epochs=10,
+    max_epochs=100
+)
+
 
 # -----------------------------
 # 4. TensorBoard
@@ -91,7 +99,6 @@ def train_one_epoch(epoch):
     total_loss = 0
     correct = 0
     total = 0
-
     loop = tqdm(train_loader, desc=f"Epoch {epoch}/{EPOCHS}", ncols=120)
 
     for images, labels in loop:
@@ -123,6 +130,12 @@ def train_one_epoch(epoch):
 # 7. 测试函数
 # -----------------------------
 def test_one_epoch(epoch):
+    # 1. 备份当前参数
+    backup = {name: p.data.clone() for name, p in model.named_parameters() if p.requires_grad}
+
+    # 2. 应用 EMA 参数
+    ema.apply_shadow(model)
+
     model.eval()
     total_loss = 0
     correct = 0
@@ -145,17 +158,23 @@ def test_one_epoch(epoch):
     writer.add_scalar("Test/Loss", avg_loss, epoch)
     writer.add_scalar("Test/Accuracy", avg_acc, epoch)
 
+    # 3. 恢复原始参数
+    for name, p in model.named_parameters():
+        if p.requires_grad:
+            p.data.copy_(backup[name])
+
     return avg_loss, avg_acc
+
 
 # -----------------------------
 # 8. 主训练循环
 # -----------------------------
+ema = EMA(model)
 for epoch in range(start_epoch, EPOCHS):
     train_loss, train_acc = train_one_epoch(epoch)
+    ema.update(model)
     test_loss, test_acc = test_one_epoch(epoch)
-
     scheduler.step()
-
     # 保存 checkpoint
     torch.save({
         "epoch": epoch,

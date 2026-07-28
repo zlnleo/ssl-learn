@@ -1,6 +1,6 @@
 import torch
 from torch import nn
-
+import  math
 
 class PatchEmbedding(nn.Module):
     """
@@ -87,22 +87,77 @@ class MLP(nn.Module):
     def forward(self, x):
         return self.net(x)
 
+# DropPath 实现（timm 的简化版）
+class DropPath(nn.Module):
+    def __init__(self, drop_prob=None):
+        super().__init__()
+        self.drop_prob = drop_prob
+
+    def forward(self, x):
+        if self.drop_prob == 0. or not self.training:
+            return x
+        keep_prob = 1 - self.drop_prob
+        shape = (x.shape[0],) + (1,) * (x.ndim - 1)
+        random_tensor = keep_prob + torch.rand(shape, dtype=x.dtype, device=x.device)
+        random_tensor.floor_()
+        return x / keep_prob * random_tensor
 
 class EncoderBlock(nn.Module):
-    def __init__(self, dim, heads, drop=0.1):
+    def __init__(self, dim, heads, drop=0.1, drop_path=0.1):
         super().__init__()
         self.norm1 = nn.LayerNorm(dim)
         self.attn = MultiHeadAttention(embed_dim=dim, num_heads=heads)
         self.drop1 = nn.Dropout(drop)
+        self.drop_path1 = DropPath(drop_path)
 
         self.norm2 = nn.LayerNorm(dim)
         self.mlp = MLP(dim, dim * 4, drop)
-        self.drop2 = nn.Dropout(drop)
+        self.drop_path2 = DropPath(drop_path)
 
     def forward(self, x):
-        x = x + self.drop1(self.attn(self.norm1(x)))
-        x = x + self.drop2(self.mlp(self.norm2(x)))
+        x = x + self.drop_path1(self.drop1(self.attn(self.norm1(x))))
+        x = x + self.drop_path2(self.mlp(self.norm2(x)))
         return x
+class WarmupCosineLR(torch.optim.lr_scheduler._LRScheduler):
+    def __init__(self, optimizer, warmup_epochs, max_epochs, last_epoch=-1):
+        self.warmup_epochs = warmup_epochs
+        self.max_epochs = max_epochs
+        super().__init__(optimizer, last_epoch)
+
+    def get_lr(self):
+        if self.last_epoch < self.warmup_epochs:
+            # warmup：线性增长
+            return [
+                base_lr * (self.last_epoch + 1) / self.warmup_epochs
+                for base_lr in self.base_lrs
+            ]
+        # cosine
+        return [
+            base_lr * 0.5 * (1 + math.cos(
+                math.pi * (self.last_epoch - self.warmup_epochs) /
+                (self.max_epochs - self.warmup_epochs)
+            ))
+            for base_lr in self.base_lrs
+        ]
+class EMA:
+    def __init__(self, model, decay=0.999):
+        self.decay = decay
+        self.shadow = {}
+        for name, param in model.named_parameters():
+            if param.requires_grad:
+                self.shadow[name] = param.data.clone()
+
+    def update(self, model):
+        for name, param in model.named_parameters():
+            if param.requires_grad:
+                self.shadow[name] = \
+                    self.decay * self.shadow[name] + (1 - self.decay) * param.data
+
+    def apply_shadow(self, model):
+        for name, param in model.named_parameters():
+            if param.requires_grad:
+                param.data = self.shadow[name]
+
 
 
 class TransformEncoder(nn.Module):
