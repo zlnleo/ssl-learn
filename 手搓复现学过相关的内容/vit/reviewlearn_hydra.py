@@ -97,7 +97,9 @@ def evaluate(model, test_loader,criterion, device):
 
 
 @hydra.main(version_base=None,config_path="configs", config_name="train_cifar100")
-def main(cfg: z):
+def main(cfg: DictConfig):
+    # 注意：类型注解必须是 DictConfig（hydra 注入的配置对象类型）。
+    # 之前写成 cfg: z 会在模块导入时直接 NameError（z 未定义）。
 
     #固定种子
     torch.manual_seed(cfg.seed)
@@ -213,8 +215,13 @@ def main(cfg: z):
             f"test_loss: {test_loss:.4f}, test_acc: {test_acc:.4f} "
             f"(best: {best_acc:.4f})")
 
-    #暂时先不记录bestacc，因为会报错，没找到解决问题方法
-    # writer.add_hparams(vars(cfg),{"best_acc":best_acc})
+    # 记录 hparams：TensorBoard 的 add_hparams 只接受"普通 dict 的标量值"。
+    # 而 cfg 是 OmegaConf 的 DictConfig 对象——它不是普通命名空间，
+    # 没有 __dict__，所以 vars(cfg) 会抛 TypeError（这就是之前报错的根因）。
+    # 正确姿势：OmegaConf.to_container(cfg, resolve=True) 把它转成普通 dict
+    # （resolve=True 会顺带把 ${...} 插值求值成最终值），再传给 add_hparams。
+    hparams = OmegaConf.to_container(cfg, resolve=True)
+    writer.add_hparams(hparams, {"best_acc": best_acc})
     writer.close()#关闭写入器
     log(f"training finished in {time.time() - start:.2f}s, "f"best test acc: {best_acc:.4f}")
     log(f"checkpoint:{cfg.ckpt_dir}/ (best.pt=最优模型, last.pt=续跑存档)")
