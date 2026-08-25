@@ -110,6 +110,9 @@ def parse_args():
     parser.add_argument("--resume",action="store_true",help="断点续跑，从ckpt-dir/last.pt恢复完整的训练状态")
     parser.add_argument("--log-dir",type=str,default="./runs",help="实验记录目录（每次运行生成 run_时间戳/config.txt+train.log）")
 
+    #早停新加入patience
+    parser.add_argument("--patience",type=int,default=10,help="验证准确率连续多少轮不创新高就停止")
+
     return parser.parse_args()
 
 
@@ -127,7 +130,7 @@ def main():
     log_file = open(os.path.join(run_dir,"train.log"),"a",encoding="utf-8")
     with open(os.path.join(run_dir,"config.txt"),"w",encoding="utf-8") as f:
         for key, value in vars(args).items():
-            f.write("{}={}\n".format(key,value))
+            f.write("{} = {}\n".format(key,value))
     def log(msg):
         print(msg)
         log_file.write(msg+"\n")
@@ -157,7 +160,7 @@ def main():
     scheduler=torch.optim.lr_scheduler.CosineAnnealingLR(optimizer,T_max=args.epochs)
     #使用混合精度
     use_amp = args.amp and device.type == "cuda"
-    scaler = torch.amp.GradScaler("cude",enabled=use_amp)
+    scaler = torch.amp.GradScaler("cuda",enabled=use_amp)
 
     #配置文件
     config =dict(img_size=img_size,patch_size=4,in_channels=in_channels,num_classes=num_classes,
@@ -183,6 +186,8 @@ def main():
             log(f"[resume] 未找到 {last_path}，从头开始训练")
     #主训练循环
     print(time.strftime('%Y-%m-%d %H:%M:%S'))
+
+    bad_epoch=0
     start = time.time()
     for epoch in range(start_epoch,args.epochs+1):
         train_loss,train_acc=train_one_epoch(model,train_loader,criterion,optimizer,scaler,device,epoch,args)
@@ -194,16 +199,25 @@ def main():
         writer.add_scalar("train/acc",train_acc,epoch)
         writer.add_scalar("test/loss",test_loss,epoch)
         writer.add_scalar("test/acc",test_acc,epoch)
-
+        writer.add_scalar("lr", scheduler.get_last_lr()[0], epoch)
         #模型调优
+        #新增早停--创新高就清零计数，否则计数+1,
+        #连续patience不涨停就break
         if test_acc > best_acc:
             best_acc = test_acc
+            bad_epoch = 0
             torch.save({
                 "model_state":model.state_dict(),
                 "config":config,
                 "best_acc":best_acc,
                 "epoch":epoch,
             },best_path)
+        else:
+            bad_epoch += 1
+            if args.patience > 0 and bad_epoch >= args.patience:
+                log(f"[early stop] 验证集连续 {bad_epoch} 轮未提升，"
+                    f"提前停止于 epoch {epoch}")
+                break
         #保存断点
         torch.save({
             "model_state":model.state_dict(),
