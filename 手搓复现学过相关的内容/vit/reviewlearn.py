@@ -1,6 +1,8 @@
 import argparse
 import os
 import time
+import random
+import numpy as np
 
 import torch
 import torch.nn as nn
@@ -12,6 +14,23 @@ try:
 except ImportError:
     from vit_solution import DROPOUT, ViT
 DATA_DIR = "../../data"
+
+#完整版固定种子函数
+def set_seed(seed: int):
+    random.seed(seed)
+    np.random.seed(seed)
+    torch.manual_seed(seed)
+    torch.cuda.manual_seed_all(seed)
+    # 确定性开关：让 cudnn 只走结果确定的算法。代价是训练略慢，
+    # 复现优先的场景（科研实验）建议开启。
+    torch.backends.cudnn.deterministic=True
+    torch.backends.cudnn.benchmark=False
+#对num_works固定种子
+def work_init_fn(worker_id):
+    worker_seed = torch.initial_seed()%2**32
+    np.random.seed(worker_seed)
+    random.seed(worker_seed)
+
 
 #构建cifar100
 def build_cifar100_loader(args):
@@ -33,9 +52,9 @@ def build_cifar100_loader(args):
     test_ds = datasets.CIFAR100(root=args.data_dir, train=False,
                                 download=True, transform=test_transforms)
     train_loader = DataLoader(train_ds, batch_size=args.batch_size, shuffle=True,
-                              num_workers=args.num_workers, pin_memory=True)
+                              num_workers=args.num_workers, pin_memory=True,worker_init_fn=work_init_fn)
     test_loader = DataLoader(test_ds, batch_size=args.batch_size, shuffle=False,
-                             num_workers=args.num_workers, pin_memory=True)
+                             num_workers=args.num_workers, pin_memory=True,worker_init_fn=work_init_fn)
     return train_loader, test_loader,3,32,100
 
 def build_fashionmnist_loader(args):
@@ -48,8 +67,8 @@ def build_fashionmnist_loader(args):
                                      download=True, transform=transform)
     val_ds = datasets.FashionMNIST(root=args.data_dir, train=False,
                                    download=True, transform=transform)
-    train_loader = DataLoader(train_ds, batch_size=args.batch_size, shuffle=True)
-    val_loader = DataLoader(val_ds, batch_size=args.batch_size)
+    train_loader = DataLoader(train_ds, batch_size=args.batch_size, shuffle=True,worker_init_fn=work_init_fn)
+    val_loader = DataLoader(val_ds, batch_size=args.batch_size,worker_init_fn=work_init_fn)
     return train_loader, val_loader, 1, 28, 10
 
 def train_one_epoch(model, train_loader,criterion, optimizer, scaler,device, epoch,args):
@@ -119,9 +138,7 @@ def parse_args():
 def main():
     args = parse_args()
     #固定种子
-    torch.manual_seed(args.seed)
-    if torch.cuda.is_available():
-        torch.cuda.manual_seed(args.seed)
+    set_seed(args.seed)
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
     #实验记录
@@ -141,7 +158,9 @@ def main():
 
     log(f"device:{device}")
     log(f"run_dir:{run_dir}")
+    log(f"seed: {args.seed}（可复现性版：含 numpy/random/cudnn 确定性开关）")
     log(f"tensorboard:训练时另开终端执行 `tensorboard --logdir runs` 查看曲线")
+
     if args.dataset == "cifar100":
         train_loader,test_loader,in_channels,img_size,num_classes=build_cifar100_loader(args)
     else:
