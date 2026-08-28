@@ -168,6 +168,7 @@ def train_one_epoch(student, teacher, loader, criterion, optimizer, scaler, devi
         one_epoch_loss += total_loss.item()*y.numel()
         correct += (student_logits[0].argmax(dim=1)==y).sum().item()
         total += y.numel()
+
         pbar.set_postfix(loss=f"{total_loss.item():.3f}", acc=f"{correct/total:.3f}")  # >>>【AI 添加】进度条后缀
     return one_epoch_loss/total,correct/total
 
@@ -269,6 +270,7 @@ def main():
         writer.add_scalar('train/acc',train_acc,epoch)
         writer.add_scalar('test/loss',test_loss,epoch)
         writer.add_scalar('test/acc',test_acc,epoch)
+        writer.add_scalar("optim/lr",optimizer.param_groups[0]["lr"],epoch)
         #保存最优模型
         if test_acc > best_acc:
             best_acc = test_acc
