@@ -123,7 +123,10 @@ python deit_cifar100.py --model small --distill hard --epochs 300 --drop-path 0.
 ## 7. 后续可扩展方向
 
 - 教师换成更强模型（WideResNet-28-10, 预训练 ResNet18）验证"教师越强学生越强"；
-- 加上 **EMA（指数滑动平均）权重**，通常再 +0.5~1 点；
+- **EMA（指数滑动平均）权重** ✅ 已加入参考版 `deit_cifar100.py`（`--ema` 开关，2026-08-28），
+  通常再 +0.5~1 点；
 - 尝试 **Repeated Augmentation（RA3）**，论文消融中它贡献很大；
 - 蒸馏温度/权重做小网格搜索，画出"蒸馏收益 vs 训练轮数"曲线；
-- 迁移到 ImageNet 官方配置复现论文 Table 1（用 timm 的 `deit_tiny_patch16_224` 对照）。
+- 迁移到 ImageNet 官方配置复现论文 Table 1（用 timm 的 `deit_tiny_patch16_224` 对照）；
+- 学习主线已进入 v2（Mixup/CutMix/RandAugment/EMA + 消融实验），路线见
+  `DeiT_v2学习路线.md`。

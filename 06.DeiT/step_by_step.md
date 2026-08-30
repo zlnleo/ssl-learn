@@ -4,9 +4,10 @@
 > 每一步都给出「为什么这么做 + 关键代码 + 对应论文位置 + 验证方法」。
 > 全程只依赖 `torch` + `torchvision`，不依赖 timm / 预训练权重。
 >
-> 📌 2026-08-28 更新：本教程对应完整增强参考版 `deit_cifar100.py`。当前仓库的学习主线是
-> 手写模块化版 `deitmodel.py / deitloss.py / deitteacher.py / deittrain.py`（已训练出
-> 63.27% 基线）；两版对照阅读，教程里的每个"为什么"在两版里都成立。
+> 📌 2026-08-28 更新：本教程对应完整增强参考版 `deit_cifar100.py`（现已升级为含 EMA 的
+> 完全体，`--ema` 开关）。当前仓库的学习主线是手写模块化版
+> `deitmodel.py / deitloss.py / deitteacher.py / deittrain.py`（已训练出 63.27% 基线）；
+> 两版对照阅读，教程里的每个"为什么"在两版里都成立。v2 学习路线见 `DeiT_v2学习路线.md`。
 
 ---
 

@@ -30,6 +30,7 @@
 """
 
 import argparse
+import copy      # >>>【AI 添加 2026-08-28】EMA 评估用的模型深拷贝
 import math
 import os
 import random
@@ -458,6 +459,29 @@ class DistilledViT(nn.Module):
         return logits_cls
 
 
+# >>>【AI 添加 2026-08-28】EMA (指数滑动平均权重): shadow ← m·shadow + (1-m)·θ
+# 注意: EMA 不是 DeiT 论文内容, 是 timm 等仓库的工程技巧 (v2 bonus)。
+# 直觉: 训练末期参数在最优解附近抖动, "最后一个 checkpoint" 可能恰好在抖动高点;
+#       影子权重是整条参数轨迹的平滑平均, 泛化通常更好, 推理/选最优时用影子权重。
+class ModelEma:
+    def __init__(self, model, decay=0.999):
+        self.decay = decay
+        self.shadow = {k: v.detach().clone() for k, v in model.state_dict().items()}
+
+    @torch.no_grad()
+    def update(self, model):
+        for k, v in model.state_dict().items():
+            self.shadow[k].mul_(self.decay).add_(v.detach(), alpha=1.0 - self.decay)
+
+    def state_dict(self):
+        return {'decay': self.decay, 'shadow': self.shadow}
+
+    def load_state_dict(self, sd):
+        self.decay = sd['decay']
+        self.shadow = sd['shadow']
+# <<<【AI 添加结束】
+
+
 def build_deit(args, num_classes=100):
     cfgs = {
         'micro': dict(embed_dim=64, depth=4, num_heads=2, mlp_ratio=2.0),   # ~0.4M, 快速测试用
@@ -525,13 +549,7 @@ def train_one_epoch(student, teacher, loader, optimizer, args, device):
     for x, y in loader:
         x, y = x.to(device), y.to(device)
 
-        # ---- 教师前向 (干净样本, eval + no_grad) ----
-        teacher_logits = None
-        if teacher is not None:
-            with torch.no_grad():
-                teacher_logits = teacher(x)
-
-        # ---- Mixup / CutMix (对图像与标签用同一个 lam 混合) ----
+        # ---- Mixup / CutMix: 先混合 (图像与标签用同一个 lam) ----
         targets = y
         if (args.mixup > 0 or args.cutmix > 0) and np.random.rand() < args.mix_switch:
             if args.mixup > 0 and np.random.rand() < 0.5:
@@ -539,9 +557,16 @@ def train_one_epoch(student, teacher, loader, optimizer, args, device):
             else:
                 x, y_a, y_b, lam, idx = cutmix_data(x, y, args.cutmix)
             targets = mix_target(y_a, y_b, lam, num_classes)
-            if teacher_logits is not None:
-                # 教师 logits 用同一个 lam 混合, 避免为混合图再前向一次教师
-                teacher_logits = lam * teacher_logits + (1 - lam) * teacher_logits[idx]
+
+        # ---- 教师前向: 看混合后的图 (eval + no_grad) ----
+        # >>>【AI 修改 2026-08-29】最终方案: 教师直接看混合图 T(x_mixed), 精确;
+        #  旧版"干净图 T(x) + 人工混 logits"是线性近似 (教师非线性, CutMix 下误差更大)。
+        #  教师前向只发生一次, 不会因混合而翻倍。
+        teacher_logits = None
+        if teacher is not None:
+            with torch.no_grad():
+                teacher_logits = teacher(x)
+        # <<<【AI 修改结束】
 
         out = student(x)
         if args.distilled:
@@ -577,6 +602,10 @@ def main():
     parser.add_argument('--model', default='tiny', choices=['micro', 'tiny', 'small'])
     parser.add_argument('--patch-size', type=int, default=4, help='32/4 -> 64 个 token')
     parser.add_argument('--drop-path', type=float, default=0.0, help='stochastic depth (论文 DeiT-B 用 0.1)')
+    # >>>【AI 添加 2026-08-28】EMA 开关与衰减系数 (v2 bonus, 非论文内容)
+    parser.add_argument('--ema', action='store_true', help='启用 EMA 权重 (选最优/推理用影子权重)')
+    parser.add_argument('--ema-decay', type=float, default=0.999, help='EMA 衰减系数 m')
+    # <<<【AI 添加结束】
     # 训练 (论文 Sec 4.1)
     parser.add_argument('--epochs', type=int, default=100)
     parser.add_argument('--batch-size', type=int, default=128)
@@ -634,6 +663,10 @@ def main():
 
     # ---- 学生模型与优化器 ----
     student = build_deit(args).to(device)
+    # >>>【AI 添加 2026-08-28】EMA: 影子权重对象 + 一个深拷贝模型 (每轮灌入影子权重后做评估)
+    ema = ModelEma(student, args.ema_decay) if args.ema else None
+    ema_model = copy.deepcopy(student) if args.ema else None
+    # <<<【AI 添加结束】
     # AdamW: 权重衰减只作用于 1D 权重, 不作用于 bias / LayerNorm (论文 Sec 4.1)
     decay, no_decay = [], []
     for name, p in student.named_parameters():
@@ -666,18 +699,32 @@ def main():
         total, base, dist, train_acc = train_one_epoch(student, teacher, train_loader,
                                                        optimizer, args, device)
         test_acc, img_per_s = evaluate(student, test_loader, device)
-        is_best = test_acc > best_acc
-        best_acc = max(best_acc, test_acc)
+        # >>>【AI 添加 2026-08-28】EMA: 每轮更新影子权重并单独评估; 开启 --ema 时以影子权重精度选最优
+        if ema is not None:
+            ema.update(student)
+            ema_model.load_state_dict(ema.shadow)
+            ema_acc, _ = evaluate(ema_model, test_loader, device)
+            track_acc = ema_acc
+        else:
+            ema_acc, track_acc = None, test_acc
+        # <<<【AI 添加结束】
+        is_best = track_acc > best_acc
+        best_acc = max(best_acc, track_acc)
 
         msg = (f"epoch {epoch:3d}/{args.epochs}  lr {lr:.2e}  "
                f"loss {total:.4f} (base {base:.4f} | dist {dist:.4f})  "
                f"train_acc {train_acc:.4f}  test_acc {test_acc:.4f}"
+               f"{'' if ema_acc is None else f'  ema_acc {ema_acc:.4f}'}"
                f"{'  *' if is_best else ''}  {img_per_s:.0f} img/s  {time.time() - t0:.1f}s")
         print(msg)
 
         if is_best:
-            torch.save({'model': student.state_dict(), 'acc': best_acc, 'args': vars(args)},
-                       os.path.join(args.out_dir, f'deit_{args.model}_{args.distill}_best.pth'))
+            ckpt = {'model': student.state_dict(), 'acc': best_acc, 'args': vars(args)}
+            # >>>【AI 添加 2026-08-28】EMA: 最优时把影子权重一并存进 checkpoint, 推理时可选加载
+            if ema is not None:
+                ckpt['ema'] = ema.state_dict()
+            # <<<【AI 添加结束】
+            torch.save(ckpt, os.path.join(args.out_dir, f'deit_{args.model}_{args.distill}_best.pth'))
 
     print(f"\n完成! 最优测试精度: {best_acc:.4f}  "
           f"(checkpoint: {os.path.join(args.out_dir, f'deit_{args.model}_{args.distill}_best.pth')})")

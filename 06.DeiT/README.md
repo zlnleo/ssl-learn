@@ -22,8 +22,9 @@ v1 训练不含 Mixup/RandAugment（预期区间 60~68%）；教师 65% 过关�
 | `deitmodel.py` | 手写 DeiT 模型：PatchEmbed / Attention / MLP / Block / DropPath / 蒸馏 token 双头 |
 | `deitloss.py` | 手写损失：标签平滑 CE + 硬蒸馏 (Eq.1) / 软蒸馏 (Eq.2) |
 | `deitteacher.py` | 卷积教师 + 教师训练 |
-| `deittrain.py` | 训练入口：AdamW + warmup + 余弦、AMP、梯度裁剪、tqdm、早停、断点续跑、TensorBoard |
-| `deit_cifar100.py` | 完整增强参考版（RandAugment / Mixup / CutMix 等论文 Sec 4.2 配方） |
+| `deittrain.py` | 训练入口（v1 baseline）：AdamW + warmup + 余弦、AMP、梯度裁剪、tqdm、早停、断点续跑、TensorBoard |
+| `deittrain_v2.py` | v2 训练入口：在 v1 基础上加入 Mixup / CutMix（论文 Sec 4.2 配方的第一步） |
+| `deit_cifar100.py` | 完整增强参考版（RandAugment / Mixup / CutMix 等论文 Sec 4.2 配方 + EMA，即"完全体"） |
 | `_check_user_files.py` | 模型 / 损失冒烟自检脚本 |
 
 ## 快速开始
@@ -48,6 +49,9 @@ tensorboard --logdir runs                          # 查看曲线
 - [冒烟测试学习.md](冒烟测试学习.md) —— 最小测试数据的编造方法论
 - [step_by_step.md](step_by_step.md) —— 从零实现教程（对应参考版）
 - [solution.md](solution.md) —— 参考版解决方案
+- [DeiT_v2学习路线.md](DeiT_v2学习路线.md) —— v2 学习地图（Mixup / CutMix / RandAugment / EMA + 消融实验设计）
+- [Mixup_CutMix接入教程.md](Mixup_CutMix接入教程.md) —— 把 Mixup / CutMix 融进训练循环的分步教程
+- [RandAugment教程.md](RandAugment教程.md) —— RandAugment 14 个操作逐个详解 + 分步实现教程
 
 ## 环境
 
