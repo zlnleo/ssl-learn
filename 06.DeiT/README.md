@@ -11,9 +11,12 @@
 | 模型 | 配置 | 最优测试精度 |
 |---|---|---|
 | TeacherCNN（卷积教师） | 30 epochs, SGD | **69.0%** |
-| DeiT-Ti + 硬蒸馏 | 100 epochs（早停于 88） | **63.27%** |
+| DeiT-Ti + 硬蒸馏（v1 baseline） | 100 epochs（早停于 88） | 63.27% |
+| DeiT-Ti + 硬蒸馏 + CutMix | 100 epochs | 67.90% |
+| DeiT-Ti + 硬蒸馏 + **RandAugment (m=20)** | 100 epochs | **68.36%（最优）** |
 
-v1 训练不含 Mixup/RandAugment（预期区间 60~68%）；教师 65% 过关门槛达成。
+> 完整消融（Mixup/CutMix/RandAugment/全配方/M 消融五组）见 `DeiT项目总结.md`。
+> 最优命令：`python deittrain_v2.py --mixup 0 --cutmix 0 --ra-m 20 --ra-inc 0`
 
 ## 文件结构
 
@@ -42,16 +45,15 @@ tensorboard --logdir runs                          # 查看曲线
 
 ## 文档
 
+- [DeiT项目总结.md](DeiT项目总结.md) —— **项目总结**：全部实验数据 / 时间线 / 知识清单 / 回访清单（先看这篇）
 - [DeiT论文讲解.md](DeiT论文讲解.md) —— 论文完整解读（公式 / 结果表 / 消融）
-- [deit手写评价.md](deit手写评价.md) —— 两轮代码评审记录（含接口 bug 复盘与结果分析）
-- [deit问题解答.md](deit问题解答.md) —— criterion / 测试口径 / 损失平均等 FAQ
+- [deit手写评价.md](deit手写评价.md) —— 三轮代码评审记录（含全部 bug 复盘与结果分析）
+- [deit问题解答.md](deit问题解答.md) —— **问答集**：全程问题与解答 + 注释知识点 + 待补充占位
+- [DeiT_v2学习路线.md](DeiT_v2学习路线.md) —— v2 学习地图 + 消融实验总表
+- [Mixup_CutMix接入教程.md](Mixup_CutMix接入教程.md) —— Mixup / CutMix 融合教程（含逐行"为什么"）
+- [RandAugment教程.md](RandAugment教程.md) —— RandAugment 14 操作详解 + 语法课堂 + M 消融结果
 - [warmup教程.md](warmup教程.md) —— 学习率 warmup 与断点续跑教程
 - [冒烟测试学习.md](冒烟测试学习.md) —— 最小测试数据的编造方法论
-- [step_by_step.md](step_by_step.md) —— 从零实现教程（对应参考版）
-- [solution.md](solution.md) —— 参考版解决方案
-- [DeiT_v2学习路线.md](DeiT_v2学习路线.md) —— v2 学习地图（Mixup / CutMix / RandAugment / EMA + 消融实验设计）
-- [Mixup_CutMix接入教程.md](Mixup_CutMix接入教程.md) —— 把 Mixup / CutMix 融进训练循环的分步教程
-- [RandAugment教程.md](RandAugment教程.md) —— RandAugment 14 个操作逐个详解 + 分步实现教程
 
 ## 环境
 
