@@ -1,5 +1,7 @@
 # DeiT on CIFAR-100 —— 从 ViT 手写推导 DeiT
 
+> [⬆ 返回仓库总览](../README.md)
+
 《Training data-efficient image transformers & distillation through attention》
 （Hugo Touvron et al., Facebook AI, ICML 2021, arXiv:2012.12877）的 CIFAR-100 复现项目。
 

@@ -1,5 +1,7 @@
 # Swin Transformer 从零学习项目（机制优先，非官方复刻）
 
+> [⬆ 返回仓库总览](../README.md)
+
 > 目标：按 **Window Attention → Window Partition/Reverse → Relative Position Bias →
 > Shifted Window → Attention Mask → Patch Merging → Swin Block → BasicLayer → 完整 Swin**
 > 的顺序逐模块学懂 Swin 的**核心机制**，并用模块化工程实现 Swin-Tiny
