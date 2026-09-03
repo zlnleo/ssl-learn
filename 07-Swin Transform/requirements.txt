@@ -1,0 +1,5 @@
+# Swin Transformer 学习项目依赖（使用 conda 环境 ssl_cv：torch 2.11.0+cu128）
+torch>=2.0
+torchvision>=0.15
+tensorboard
+numpy
