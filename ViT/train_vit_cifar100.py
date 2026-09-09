@@ -161,7 +161,7 @@ def train_one_epoch(epoch):
 
     total = 0
 
-    loop = tqdm(train_loader, desc=f"Train Epoch [{epoch}/{EPOCHS}]", ncols=120)
+    loop = tqdm(train_loader, desc=f"Train Epoch [{epoch+1}/{EPOCHS}]", ncols=120)
 
     for images, labels in loop:
 
@@ -276,7 +276,7 @@ for epoch in range(start_epoch, EPOCHS):
     )
 
     print(f"""
-Epoch {epoch}
+Epoch {epoch+1}
 
 Train Loss: {train_loss:.4f}
 Train Acc : {train_acc:.2f}%
